@@ -1,0 +1,20 @@
+{
+  "name": "com.kvd.profiler",
+  "version": "0.1.0",
+  "displayName": "KamilVDono - KVD Profiler",
+  "description": "Bottom-up profiler view.",
+  "keywords": [
+    "unity",
+    "profiling",
+    "profiler",
+    "performance",
+    "tool"
+  ],
+  "author": {
+    "name": "KamilVDono",
+    "email": "kamilvdono@gmail.com"
+  },
+  "dependencies": {
+    "com.kvd.utils": "0.0.1"
+  }
+}

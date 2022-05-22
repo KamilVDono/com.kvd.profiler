@@ -1,0 +1,18 @@
+{
+    "name": "KVD.Profiler.Editor",
+    "rootNamespace": "KVD.Profiler.Editor",
+    "references": [
+        "GUID:59ecb471de80f35478a4ac410fa00fcf"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
