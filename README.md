@@ -1,11 +1,12 @@
-# Description
+# KVD Profiler
 
-Naive, but still powerful and fast implementation of ECS (Entity-Components-Systems) which is intended to
-be used with Unity. For now it's DO NOT use Unity's DOTS, but maybe in future it would be possible.
+## Description
 
-Whole workflow will be clarified, refined and simplified over time by usage and experience.
+KVD Profiler for Unity is bottom-up profiler, so its allow you to identify which method degrades performance. It's not replacement of build-in profiling tool for Unity, but extension and next tool in performance toolkit.
 
-**As it's intended to be used with Unity, it depends on Unity features.**
+## Usage
 
-By simple benchmarks, it's faster than [LeoEcsLite](https://github.com/Leopotam/ecslite).
-The same time LeoEcsLite provides other feature set. And further benchmarking should be done.
+To open profiler go to: `Window->Analysis->Kvd Profiler`.
+Collect profile frame via build-in profiler.
+In KVD Profiler choose frame you want to inspect.
+Do inspection.
