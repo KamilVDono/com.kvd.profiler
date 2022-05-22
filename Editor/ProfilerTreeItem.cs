@@ -12,6 +12,9 @@ namespace KVD.Profiler.Editor
 		public float avgOwnTime;
 		public float minOwnTime;
 		public float maxOwnTime;
+		public float avgOwnGc;
+		public float minOwnGc;
+		public float maxOwnGc;
 		
 		public ProfilerTreeItem(int id, string name)
 		{

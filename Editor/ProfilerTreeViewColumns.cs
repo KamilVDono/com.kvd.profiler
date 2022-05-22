@@ -11,8 +11,11 @@ namespace KVD.Profiler.Editor
 		private const int OwnGcColumnIndex = 4;
 		private const int TotalGcColumnIndex = 5;
 		private const int AvgOwnTimeColumnIndex = 6;
-		private const int MinOwnTimeGcColumnIndex = 7;
+		private const int MinOwnTimeColumnIndex = 7;
 		private const int MaxOwnTimeColumnIndex = 8;
+		private const int AvgOwnGcColumnIndex = 9;
+		private const int MinOwnGcColumnIndex = 10;
+		private const int MaxOwnGcColumnIndex = 11;
 		
 		public static MultiColumnHeader CreateColumnsState()
 		{
@@ -30,6 +33,9 @@ namespace KVD.Profiler.Editor
 				new MultiColumnHeaderState.Column { headerContent = new("Avg own time"), autoResize = true, width = 100, },
 				new MultiColumnHeaderState.Column { headerContent = new("Min own time"), autoResize = true, width = 100, },
 				new MultiColumnHeaderState.Column { headerContent = new("Max own time"), autoResize = true, width = 100, },
+				new MultiColumnHeaderState.Column { headerContent = new("Avg own gc"), autoResize = true, width = 100, },
+				new MultiColumnHeaderState.Column { headerContent = new("Min own gc"), autoResize = true, width = 100, },
+				new MultiColumnHeaderState.Column { headerContent = new("Max own gc"), autoResize = true, width = 100, },
 			});
 			return new(headersState);
 		}

@@ -93,20 +93,24 @@ namespace KVD.Profiler.Editor
 			var    ownTime   = 0f;
 			var    totalTime = 0f;
 			var    ownGc     = 0f;
-			var    gc        = 0f;
+			var    totalGc   = 0f;
 			ushort calls     = 0;
 
 			var minOwnTime = float.MaxValue;
 			var maxOwnTime = 0f;
+			
+			var minOwnGc = float.MaxValue;
+			var maxOwnGc = 0f;
 
 			foreach (var index in indices)
 			{
 				var currentOwnTime = data.OwnTimes[index];
+				var currentOwnGc = data.OwnGcAllocs[index];
 				
 				ownTime   += currentOwnTime;
 				totalTime += data.TotalTimes[index];
-				ownGc     += data.OwnGcAllocs[index];
-				gc        += data.TotalGcAllocs[index];
+				ownGc     += currentOwnGc;
+				totalGc   += data.TotalGcAllocs[index];
 				calls     += data.Calls[index];
 
 				if (currentOwnTime < minOwnTime)
@@ -117,18 +121,30 @@ namespace KVD.Profiler.Editor
 				{
 					maxOwnTime = currentOwnTime;
 				}
+				
+				if (currentOwnGc < minOwnGc)
+				{
+					minOwnGc = currentOwnGc;
+				}
+				if (currentOwnGc > maxOwnGc)
+				{
+					maxOwnGc = currentOwnGc;
+				}
 			}
 			var item = new ProfilerTreeItem(marker, itemName)
 			{
 				ownTime   = ownTime,
 				totalTime = totalTime,
 				ownGc     = ownGc,
-				totalGc   = gc,
+				totalGc   = totalGc,
 				calls     = calls,
 				depth     = depth,
 				avgOwnTime = ownTime / indices.Count,
 				minOwnTime = minOwnTime,
 				maxOwnTime = maxOwnTime,
+				avgOwnGc = ownGc / indices.Count,
+				minOwnGc = minOwnGc,
+				maxOwnGc = maxOwnGc,
 			};
 			return item;
 		}

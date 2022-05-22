@@ -51,13 +51,25 @@ namespace KVD.Profiler.Editor
 			{
 				GUI.Label(rect, $"{item.avgOwnTime:f5}ms");
 			}
-			else if (column == MinOwnTimeGcColumnIndex)
+			else if (column == MinOwnTimeColumnIndex)
 			{
 				GUI.Label(rect, $"{item.minOwnTime:f5}ms");
 			}
 			else if (column == MaxOwnTimeColumnIndex)
 			{
 				GUI.Label(rect, $"{item.maxOwnTime:f5}ms");
+			}
+			else if (column == AvgOwnGcColumnIndex)
+			{
+				GUI.Label(rect, BytesToString(item.avgOwnGc));
+			}
+			else if (column == MinOwnGcColumnIndex)
+			{
+				GUI.Label(rect, BytesToString(item.minOwnGc));
+			}
+			else if (column == MaxOwnGcColumnIndex)
+			{
+				GUI.Label(rect, BytesToString(item.maxOwnGc));
 			}
 		}
 

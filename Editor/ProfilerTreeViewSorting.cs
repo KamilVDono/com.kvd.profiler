@@ -103,7 +103,7 @@ namespace KVD.Profiler.Editor
 					itemChildren.Sort(AvgOwnTimeComparisonDesc.Comparer);
 				}
 			}
-			else if (multiColumnHeader.sortedColumnIndex == MinOwnTimeGcColumnIndex)
+			else if (multiColumnHeader.sortedColumnIndex == MinOwnTimeColumnIndex)
 			{
 				if (multiColumnHeader.IsSortedAscending(multiColumnHeader.sortedColumnIndex))
 				{
@@ -123,6 +123,39 @@ namespace KVD.Profiler.Editor
 				else
 				{
 					itemChildren.Sort(MaxOwnTimeComparisonDesc.Comparer);
+				}
+			}
+			else if (multiColumnHeader.sortedColumnIndex == AvgOwnGcColumnIndex)
+			{
+				if (multiColumnHeader.IsSortedAscending(multiColumnHeader.sortedColumnIndex))
+				{
+					itemChildren.Sort(AvgOwnGcComparisonAsc.Comparer);
+				}
+				else
+				{
+					itemChildren.Sort(AvgOwnGcComparisonDesc.Comparer);
+				}
+			}
+			else if (multiColumnHeader.sortedColumnIndex == MinOwnGcColumnIndex)
+			{
+				if (multiColumnHeader.IsSortedAscending(multiColumnHeader.sortedColumnIndex))
+				{
+					itemChildren.Sort(MinOwnGcComparisonAsc.Comparer);
+				}
+				else
+				{
+					itemChildren.Sort(MinOwnGcComparisonDesc.Comparer);
+				}
+			}
+			else if (multiColumnHeader.sortedColumnIndex == MaxOwnGcColumnIndex)
+			{
+				if (multiColumnHeader.IsSortedAscending(multiColumnHeader.sortedColumnIndex))
+				{
+					itemChildren.Sort(MaxOwnGcComparisonAsc.Comparer);
+				}
+				else
+				{
+					itemChildren.Sort(MaxOwnGcComparisonDesc.Comparer);
 				}
 			}
 		}
@@ -284,6 +317,66 @@ namespace KVD.Profiler.Editor
 			public int Compare(TreeViewItem x, TreeViewItem y)
 			{
 				return ((ProfilerTreeItem)y).maxOwnTime.CompareTo(((ProfilerTreeItem)x).maxOwnTime);
+			}
+		}
+
+		private class AvgOwnGcComparisonAsc : IComparer<TreeViewItem>
+		{
+			public static readonly AvgOwnGcComparisonAsc Comparer = new();
+			
+			public int Compare(TreeViewItem x, TreeViewItem y)
+			{
+				return ((ProfilerTreeItem)x).avgOwnGc.CompareTo(((ProfilerTreeItem)y).avgOwnGc);
+			}
+		}
+		
+		private class AvgOwnGcComparisonDesc : IComparer<TreeViewItem>
+		{
+			public static readonly AvgOwnGcComparisonDesc Comparer = new();
+			
+			public int Compare(TreeViewItem x, TreeViewItem y)
+			{
+				return ((ProfilerTreeItem)y).avgOwnGc.CompareTo(((ProfilerTreeItem)x).avgOwnGc);
+			}
+		}
+		
+		private class MinOwnGcComparisonAsc : IComparer<TreeViewItem>
+		{
+			public static readonly MinOwnGcComparisonAsc Comparer = new();
+			
+			public int Compare(TreeViewItem x, TreeViewItem y)
+			{
+				return ((ProfilerTreeItem)x).minOwnGc.CompareTo(((ProfilerTreeItem)y).minOwnGc);
+			}
+		}
+		
+		private class MinOwnGcComparisonDesc : IComparer<TreeViewItem>
+		{
+			public static readonly MinOwnGcComparisonDesc Comparer = new();
+			
+			public int Compare(TreeViewItem x, TreeViewItem y)
+			{
+				return ((ProfilerTreeItem)y).minOwnGc.CompareTo(((ProfilerTreeItem)x).minOwnGc);
+			}
+		}
+		
+		private class MaxOwnGcComparisonAsc : IComparer<TreeViewItem>
+		{
+			public static readonly MaxOwnGcComparisonAsc Comparer = new();
+			
+			public int Compare(TreeViewItem x, TreeViewItem y)
+			{
+				return ((ProfilerTreeItem)x).maxOwnGc.CompareTo(((ProfilerTreeItem)y).maxOwnGc);
+			}
+		}
+		
+		private class MaxOwnGcComparisonDesc : IComparer<TreeViewItem>
+		{
+			public static readonly MaxOwnGcComparisonDesc Comparer = new();
+			
+			public int Compare(TreeViewItem x, TreeViewItem y)
+			{
+				return ((ProfilerTreeItem)y).maxOwnGc.CompareTo(((ProfilerTreeItem)x).maxOwnGc);
 			}
 		}
 	}
