@@ -18,9 +18,12 @@ namespace KVD.Profiler.Editor
 		public void FullSort(TreeViewItem item)
 		{
 			SortChildren(item);
-			foreach (var itemChild in item.children)
+			if ((item.children?.Count ?? 0) > 0)
 			{
-				FullSort(itemChild);
+				foreach (var itemChild in item.children)
+				{
+					FullSort(itemChild);
+				}
 			}
 		}
 		

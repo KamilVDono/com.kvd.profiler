@@ -1,13 +1,17 @@
 ﻿using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading.Tasks;
 using KVD.Utils.DataStructures;
 using UnityEditor.IMGUI.Controls;
+using UnityEngine;
+using Debug = UnityEngine.Debug;
 
 namespace KVD.Profiler.Editor
 {
 	public partial class ProfilerTreeView : TreeView
 	{
 		private readonly HashSet<int> _blacklistMarkerIds;
-		
+
 		public ProfilerTreeView(
 			ProfilerTreeViewState state, MultiColumnHeader multiColumnHeader, HashSet<int> blacklistMarkerIds)
 			: base(state, multiColumnHeader)
@@ -32,69 +36,81 @@ namespace KVD.Profiler.Editor
 			var profilerState = (ProfilerTreeViewState)state;
 			var data          = profilerState.data;
 			var root          = new TreeViewItem(rootIndex, rootDepth);
-
-			// Replace Dictionary
-			var samplesByMarker = new DistinctMultiDictionary<int, int>();
-			for (var index = 1; index < data.MarkerIds.Length; index++)
-			{
-				var markerId = data.MarkerIds[index];
-				if (_blacklistMarkerIds.Contains(markerId))
-				{
-					continue;
-				}
-				samplesByMarker.Add(markerId, index);
-			}
-
-			root.children = new(samplesByMarker.Count);
-			foreach (var samples in samplesByMarker)
-			{
-				AddItem(root, samples.Key, samples.Value, rootDepth, data);
-			}
 			
+			Parallel.For(0, data.SamplesByMarkers.Length, i =>
+			{
+				var samples = data.SamplesByMarkers[i];
+				if ((samples?.Count ?? 0) >= 1)
+				{
+					ConcurrentAddItem(root, i, samples, rootDepth, data);
+				}
+			});
+
 			SortChildren(root);
 
 			return root;
 		}
 
-		private void AddItem(
-			TreeViewItem parent, int markerId, HashSet<int> markerOccurrences, int parentDepth, ProfilerData data)
+		private void ConcurrentAddItem(TreeViewItem parent, int markerId,
+			List<int> markerOccurrences, int parentDepth, ProfilerData data, SimplePool<List<int>> pool = null)
 		{
 			var myDepth = parentDepth+1;
 			var item    = CreateTreeItem(markerId, markerOccurrences, myDepth, data);
 			parent.AddChild(item);
+			
+			pool ??= new(10, () => new(24));
 
 			// Replace Dictionary
-			var parents = new DistinctMultiDictionary<int, int>(4);
+			using var markersBorrow = pool.Borrow();
+			var       markers       = markersBorrow.Element;
+			markers.Clear();
+
 			foreach (var occurrenceId in markerOccurrences)
 			{
-				var parentId = data.ParentIds[occurrenceId];
-				if (parentId < 1)
-				{
-					continue;
-				}
+				var parentId       = data.ParentIds[occurrenceId];
 				var parentMarkerId = data.MarkerIds[parentId];
 				if (_blacklistMarkerIds.Contains(parentMarkerId))
 				{
 					continue;
 				}
-				parents.Add(parentMarkerId, parentId);
+
+				if (markers.Contains(parentMarkerId))
+				{
+					continue;
+				}
+				markers.Add(parentMarkerId);
 			}
-			item.children = new(parents.Count);
-			foreach (var (parentMarkerId, parentIndices) in parents)
+
+			using var parentsBorrow = pool.Borrow();
+			var       parents       = parentsBorrow.Element;
+			for (var i = 0; i < markers.Count; i++)
 			{
-				AddItem(item, parentMarkerId, parentIndices, myDepth, data);
+				var marker = markers[i];
+				parents.Clear();
+				
+				foreach (var occurrenceId in markerOccurrences)
+				{
+					var parentId       = data.ParentIds[occurrenceId];
+					var parentMarkerId = data.MarkerIds[parentId];
+					if (marker == parentMarkerId && !parents.Contains(parentId))
+					{
+						parents.Add(parentId);
+					}
+				}
+				
+				ConcurrentAddItem(item, marker, parents, myDepth, data, pool);
 			}
+
 			SortChildren(item);
 		}
 
-		private ProfilerTreeItem CreateTreeItem(int marker, HashSet<int> indices, int depth, ProfilerData data)
+		private ProfilerTreeItem CreateTreeItem(int marker, List<int> indices, int depth, ProfilerData data)
 		{
 			var    itemName  = data.NameById[marker];
 			var    ownTime   = 0f;
 			var    totalTime = 0f;
 			var    ownGc     = 0f;
 			var    totalGc   = 0f;
-			ushort calls     = 0;
 
 			var minOwnTime = float.MaxValue;
 			var maxOwnTime = 0f;
@@ -111,7 +127,6 @@ namespace KVD.Profiler.Editor
 				totalTime += data.TotalTimes[index];
 				ownGc     += currentOwnGc;
 				totalGc   += data.TotalGcAllocs[index];
-				calls     += data.Calls[index];
 
 				if (currentOwnTime < minOwnTime)
 				{
@@ -133,18 +148,18 @@ namespace KVD.Profiler.Editor
 			}
 			var item = new ProfilerTreeItem(marker, itemName)
 			{
-				ownTime   = ownTime,
-				totalTime = totalTime,
-				ownGc     = ownGc,
-				totalGc   = totalGc,
-				calls     = calls,
-				depth     = depth,
+				ownTime    = ownTime,
+				totalTime  = totalTime,
+				ownGc      = ownGc,
+				totalGc    = totalGc,
+				calls      = (ushort)indices.Count,
+				depth      = depth,
 				avgOwnTime = ownTime / indices.Count,
 				minOwnTime = minOwnTime,
 				maxOwnTime = maxOwnTime,
-				avgOwnGc = ownGc / indices.Count,
-				minOwnGc = minOwnGc,
-				maxOwnGc = maxOwnGc,
+				avgOwnGc   = ownGc / indices.Count,
+				minOwnGc   = minOwnGc,
+				maxOwnGc   = maxOwnGc,
 			};
 			return item;
 		}

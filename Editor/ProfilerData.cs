@@ -11,7 +11,7 @@ namespace KVD.Profiler.Editor
 		public float[] TotalTimes{ get; set; }
 		public float[] OwnGcAllocs{ get; set; }
 		public float[] TotalGcAllocs{ get; set; }
-		public ushort[] Calls{ get; set; }
-		public Dictionary<int, string> NameById{ get; set; }
+		public string[] NameById{ get; set; }
+		public List<int>[] SamplesByMarkers{ get; set; }
 	}
 }

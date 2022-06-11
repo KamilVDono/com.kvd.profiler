@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.Profiling;
 using UnityEditorInternal;
@@ -11,29 +12,70 @@ namespace KVD.Profiler.Editor
 		private static readonly HashSet<string> BlacklistMarkerNames = new()
 		{
 			"PlayerLoop", "EditorLoop", "Update.ScriptRunBehaviourUpdate", "FixedUpdate.PhysicsFixedUpdate",
+			"Main Thread",
 		};
 
 		[SerializeField] private ProfilerTreeViewState _treeState;
-		[SerializeField] private int _selectedFrame;
+		[SerializeField] private int _selectedFrameMin;
+		[SerializeField] private int _selectedFrameMax;
 		private ProfilerTreeView _treeView;
 
-		private readonly Dictionary<int, string> _nameById = new();
 		private readonly HashSet<int> _blacklistMarkerIds = new();
+		private readonly List<FrameDataView.MarkerInfo> _allMarkersInfo = new();
+		private string[] _markerNames;
+		private List<int>[] _samplesByMarkers;
 
 		private void OnEnable()
 		{
-			_selectedFrame = ProfilerDriver.lastFrameIndex;
+			_selectedFrameMin = _selectedFrameMax = -1;
 		}
 
 		private void OnGUI()
 		{
+			if (ProfilerDriver.lastFrameIndex < 0)
+			{
+				EditorGUILayout.LabelField("Collect profiler frames at first", EditorStyles.boldLabel);
+				return;
+			}
+			EditorGUILayout.BeginHorizontal();
 			EditorGUI.BeginChangeCheck();
-			_selectedFrame = EditorGUILayout.IntSlider(_selectedFrame, ProfilerDriver.firstFrameIndex-1,
-				ProfilerDriver.lastFrameIndex);
+			
+			var minIndex = ProfilerDriver.firstFrameIndex;
+			var maxIndex = ProfilerDriver.lastFrameIndex;
+			
+			float min = _selectedFrameMin;
+			float max = _selectedFrameMax;
+			
+			EditorGUILayout.LabelField($"{minIndex}", GUILayout.Width(25));
+			EditorGUILayout.MinMaxSlider(ref min, ref max, minIndex, maxIndex);
+			EditorGUILayout.LabelField($"{maxIndex}", GUILayout.Width(25));
+			
+			var minRound = Mathf.RoundToInt(min);
+			var maxRound = Mathf.RoundToInt(max);
+			
+			minRound = EditorGUILayout.DelayedIntField(minRound, GUILayout.Width(35));
+			EditorGUILayout.LabelField("/", GUILayout.Width(15));
+			maxRound = EditorGUILayout.DelayedIntField(maxRound, GUILayout.Width(35));
+			
+			EditorGUI.BeginChangeCheck();
+			var singleFrame = _selectedFrameMin == _selectedFrameMax ? _selectedFrameMin : -1;
+			singleFrame = EditorGUILayout.DelayedIntField(singleFrame, GUILayout.Width(35));
 			if (EditorGUI.EndChangeCheck())
 			{
+				maxRound = minRound = singleFrame;
+			}
+			
+			if (EditorGUI.EndChangeCheck() && (minRound != _selectedFrameMin || maxRound != _selectedFrameMax))
+			{
+				_selectedFrameMin = Mathf.Clamp(minRound, minIndex, maxIndex);
+				_selectedFrameMax = Mathf.Clamp(maxRound, minIndex, maxIndex);
+				if (_selectedFrameMax < _selectedFrameMin)
+				{
+					(_selectedFrameMin, _selectedFrameMax) = (_selectedFrameMax, _selectedFrameMin);
+				}
 				CollectData();
 			}
+			EditorGUILayout.EndHorizontal();
 
 			if (_treeView?.GetRows() == null)
 			{
@@ -50,97 +92,155 @@ namespace KVD.Profiler.Editor
 			_treeView  = null;
 			_treeState = null;
 
-			if (_selectedFrame < ProfilerDriver.firstFrameIndex || _selectedFrame > ProfilerDriver.lastFrameIndex)
+			var range  = _selectedFrameMax-_selectedFrameMin+1;
+			var frames = new List<HierarchyFrameDataView>(_selectedFrameMax-_selectedFrameMin+1);
+			var frameSamplesRange = new List<Vector2Int>(_selectedFrameMax-_selectedFrameMin+1);
+			for (var i = 0; i < range; i++)
+			{
+				CollectFrame(i, frames, frameSamplesRange);
+			}
+
+			if (frames.Count < 0)
 			{
 				return;
 			}
+			
+			var gcMarkerId = CollectMarkers(frames);
 
-			using var frameData = ProfilerDriver.GetHierarchyFrameDataView(_selectedFrame, 0,
-				HierarchyFrameDataView.ViewModes.HideEditorOnlySamples, HierarchyFrameDataView.columnDontSort, false);
-			if (!frameData.valid)
-			{
-				return;
-			}
+			var samplesCount    = frameSamplesRange.Last().y;
+			var markerIds       = new int[samplesCount];
+			var parentIds       = new int[samplesCount];
+			var childrenIds     = new int[samplesCount][];
+			var ownTimes        = new float[samplesCount];
+			var totalTimes      = new float[samplesCount];
+			var totalGcAllocs   = new float[samplesCount];
+			var ownGcAllocs     = new float[samplesCount];
 
-			var gcMarkerId = frameData.GetMarkerId("GC.Alloc");
-			foreach (var blacklistMarkerName in BlacklistMarkerNames)
-			{
-				_blacklistMarkerIds.Add(frameData.GetMarkerId(blacklistMarkerName));
-			}
-		
-			var samplesCount = frameData.sampleCount;
-
-			var markerIds     = new int[samplesCount];
-			var parentIds     = new int[samplesCount];
-			var childrenIds   = new int[samplesCount][];
-			var calls         = new ushort[samplesCount];
-			var ownTimes      = new float[samplesCount];
-			var totalTimes    = new float[samplesCount];
-			var totalGcAllocs = new float[samplesCount];
-			var ownGcAllocs   = new float[samplesCount];
-		
 			var children = new List<int>(32);
 
-			var toInvestigate = new Queue<int>();
-			toInvestigate.Enqueue(frameData.GetRootItemID()); // 0
+			// Root
+			markerIds[0]   = -1;
+			childrenIds[0] = new int[frames.Count];
 
-			while (toInvestigate.Count > 0)
+			for (var i = 0; i < frames.Count; i++)
 			{
-				var currentId = toInvestigate.Dequeue();
-			
-				var markerId = frameData.GetItemMarkerID(currentId);
-				markerIds[currentId] = markerId;
-
-				if (!_nameById.ContainsKey(markerId))
-				{
-					_nameById[markerId] = frameData.GetMarkerName(markerId);
-				}
-			
-				frameData.GetItemChildren(currentId, children);
-				childrenIds[currentId] = new int[children.Count];
-				for (var i = 0; i < children.Count; i++)
-				{
-					var child = children[i];
-					toInvestigate.Enqueue(child);
-					childrenIds[currentId][i] = child;
-					parentIds[child]          = currentId;
-				}
-			
-				var time = frameData.GetItemColumnDataAsFloat(currentId, HierarchyFrameDataView.columnSelfTime);
-				ownTimes[currentId] = time;
-			
-				time = frameData.GetItemColumnDataAsFloat(currentId, HierarchyFrameDataView.columnTotalTime);
-				totalTimes[currentId] = time;
-			
-				var call = (ushort)frameData.GetItemColumnDataAsFloat(currentId, HierarchyFrameDataView.columnCalls);
-				calls[currentId] = call;
-
-				var gc = frameData.GetItemColumnDataAsFloat(currentId, HierarchyFrameDataView.columnGcMemory);
-				totalGcAllocs[currentId] = gc;
+				childrenIds[0][i] = frameSamplesRange[i].x;
 			}
 
-			CalculateOwnGc(0, childrenIds, totalGcAllocs, ownGcAllocs, markerIds, gcMarkerId);
-		
-			var headers = ProfilerTreeView.CreateColumnsState();
-
-			_treeState = new(new()
+			for (var globalCurrentId = 1; globalCurrentId < samplesCount; globalCurrentId++)
 			{
-				MarkerIds     = markerIds,
-				ParentIds     = parentIds,
-				ChildrenIds   = childrenIds,
-				OwnTimes      = ownTimes,
-				TotalTimes    = totalTimes,
-				OwnGcAllocs   = ownGcAllocs,
-				TotalGcAllocs = totalGcAllocs,
-				Calls         = calls,
-				NameById      = _nameById,
-			});
-			_treeView = new(_treeState, headers, _blacklistMarkerIds);
-			headers.ResizeToFit();
+				var        frameId = 0;
+				Vector2Int frameRange;
+				while (globalCurrentId >= (frameRange = frameSamplesRange[frameId]).y)
+				{
+					frameId++;
+				}
+
+				var frame         = frames[frameId];
+				var startSampleId = frameRange.x;
+
+				var currentId = globalCurrentId-startSampleId;
+				
+				var markerId = frame.GetItemMarkerID(currentId);
+				markerIds[globalCurrentId] = markerId;
+
+				if (!_blacklistMarkerIds.Contains(markerId) && markerId >= 0)
+				{
+					var samples = _samplesByMarkers[markerId];
+					samples.Add(globalCurrentId);
+				}
+
+				frame.GetItemChildren(currentId, children);
+				childrenIds[globalCurrentId] = new int[children.Count];
+				for (var c = 0; c < children.Count; c++)
+				{
+					var childLocalId  = children[c];
+					var childGlobalId = startSampleId+childLocalId;
+					childrenIds[globalCurrentId][c] = childGlobalId;
+					parentIds[childGlobalId]        = globalCurrentId;
+				}
+				
+				var time = frame.GetItemColumnDataAsFloat(currentId, HierarchyFrameDataView.columnSelfTime);
+				ownTimes[globalCurrentId] = time;
+
+				time = frame.GetItemColumnDataAsFloat(currentId, HierarchyFrameDataView.columnTotalTime);
+				totalTimes[globalCurrentId] = time;
+
+				var gc = frame.GetItemColumnDataAsFloat(currentId, HierarchyFrameDataView.columnGcMemory);
+				totalGcAllocs[globalCurrentId] = gc;
+			}
+			
+			for (var i = 0; i < frames.Count; i++)
+			{
+				frames[i].Dispose();
+			}
+			frames.Clear();
+
+			CalculateOwnGc(0, childrenIds, totalGcAllocs, ownGcAllocs, markerIds, gcMarkerId);
+
+			CreateProfilerTree(markerIds, parentIds, childrenIds, ownTimes, totalTimes, ownGcAllocs, totalGcAllocs);
 		}
 
-		private static void CalculateOwnGc(
-			int id, int[][] childrenIds, float[] totalGcAllocs, float[] ownGcAllocs, int[] markerIds, int gcMarkerId)
+		private void CollectFrame(int i, List<HierarchyFrameDataView> frames, List<Vector2Int> frameSamplesRange)
+		{
+			var frame = ProfilerDriver.GetHierarchyFrameDataView(_selectedFrameMin+i, 0,
+				HierarchyFrameDataView.ViewModes.HideEditorOnlySamples, HierarchyFrameDataView.columnDontSort, false);
+			if (!frame.valid)
+			{
+				frame.Dispose();
+				return;
+			}
+			frames.Add(frame);
+			var frameRange = new Vector2Int(0, frame.sampleCount);
+			if (i > 0)
+			{
+				var previousEnd = frameSamplesRange[i-1].y;
+				frameRange.x += previousEnd;
+				frameRange.y += previousEnd;
+			}
+			else
+			{
+				frameRange.x += 1;
+				frameRange.y += 1;
+			}
+			frameSamplesRange.Add(frameRange);
+		}
+		
+		private int CollectMarkers(List<HierarchyFrameDataView> frames)
+		{
+			frames[0].GetMarkers(_allMarkersInfo);
+			var maxMarkerId = 0;
+			foreach (var markerInfo in _allMarkersInfo)
+			{
+				if (maxMarkerId < markerInfo.id)
+				{
+					maxMarkerId = markerInfo.id;
+				}
+			}
+			maxMarkerId++;
+			_markerNames      = new string[maxMarkerId];
+			_samplesByMarkers = new List<int>[maxMarkerId];
+			foreach (var markerInfo in _allMarkersInfo)
+			{
+				if (markerInfo.id < 0)
+				{
+					continue;
+				}
+				_markerNames[markerInfo.id]      = markerInfo.name;
+				_samplesByMarkers[markerInfo.id] = new(16);
+			}
+
+			var gcMarkerId = frames[0].GetMarkerId("GC.Alloc");
+			foreach (var blacklistMarkerName in BlacklistMarkerNames)
+			{
+				_blacklistMarkerIds.Add(frames[0].GetMarkerId(blacklistMarkerName));
+			}
+			_blacklistMarkerIds.Add(FrameDataView.invalidMarkerId);
+			return gcMarkerId;
+		}
+
+		private static void CalculateOwnGc(int id, int[][] childrenIds,
+			float[] totalGcAllocs, float[] ownGcAllocs, int[] markerIds, int gcMarkerId)
 		{
 			if (markerIds[id] == gcMarkerId)
 			{
@@ -160,6 +260,26 @@ namespace KVD.Profiler.Editor
 				ownGc -= totalGcAllocs[child];
 			}
 			ownGcAllocs[id] = ownGc;
+		}
+		
+		private void CreateProfilerTree(int[] markerIds, int[] parentIds, int[][] childrenIds,
+			float[] ownTimes, float[] totalTimes, float[] ownGcAllocs, float[] totalGcAllocs)
+		{
+			var headers = ProfilerTreeView.CreateColumnsState();
+			_treeState = new(new()
+			{
+				MarkerIds        = markerIds,
+				ParentIds        = parentIds,
+				ChildrenIds      = childrenIds,
+				OwnTimes         = ownTimes,
+				TotalTimes       = totalTimes,
+				OwnGcAllocs      = ownGcAllocs,
+				TotalGcAllocs    = totalGcAllocs,
+				NameById         = _markerNames,
+				SamplesByMarkers = _samplesByMarkers,
+			});
+			_treeView = new(_treeState, headers, _blacklistMarkerIds);
+			headers.ResizeToFit();
 		}
 
 		#region Show window
